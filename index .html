@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>桥梁位移监测系统 | Bridge Displacement Monitor</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: #0a0e1a;
+  color: #e0e6f0;
+  min-height: 100vh;
+  overflow: hidden;
+}
+.app {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  grid-template-rows: 56px 1fr;
+  gap: 0;
+  height: 100vh;
+}
+header {
+  grid-column: 1 / -1;
+  background: linear-gradient(90deg, #0d1426, #131b32);
+  border-bottom: 1px solid #1e2a4a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+}
+.logo { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 16px; letter-spacing: 0.5px; }
+.logo .icon { width: 28px; height: 28px; background: linear-gradient(135deg, #00d4ff, #0066ff); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+.logo .title { color: #fff; }
+.logo .sub { color: #5a7ab5; font-weight: 400; font-size: 12px; margin-left: 8px; }
+.status-bar { display: flex; align-items: center; gap: 18px; font-size: 12px; color: #8aa0c8; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.status-dot.ok { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+.status-dot.warn { background: #eab308; box-shadow: 0 0 8px #eab308; }
+.status-dot.err { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+.status-dot.idle { background: #6b7280; }
+.main { display: grid; grid-template-rows: 1fr 180px; gap: 8px; padding: 8px; background: #0a0e1a; overflow: hidden; }
+.video-container { position: relative; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid #1e2a4a; }
+#videoCanvas { display: block; background: #000; }
+#overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+#selectionCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; }
+.chart-container { background: #0d1426; border-radius: 8px; border: 1px solid #1e2a4a; padding: 6px; display: flex; flex-direction: column; }
+.chart-header { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #8aa0c8; margin-bottom: 3px; padding: 0 4px; }
+#chartCanvas { flex: 1; width: 100%; }
+.sidebar { background: #0d1426; border-left: 1px solid #1e2a4a; display: flex; flex-direction: column; overflow: hidden; height: 100%; }
+.panel { border-bottom: 1px solid #1e2a4a; padding: 10px 14px; flex-shrink: 0; }
+.panel-title { font-size: 12px; font-weight: 600; color: #00d4ff; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.panel-title::before { content: ''; width: 3px; height: 12px; background: linear-gradient(180deg, #00d4ff, #0066ff); border-radius: 2px; }
+.panel-body { display: flex; flex-direction: column; gap: 6px; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { flex: 1; min-width: 80px; padding: 5px 8px; border: 1px solid #1e3a6a; border-radius: 5px; background: linear-gradient(180deg, #162240, #0f1a32); color: #c0d4f0; font-size: 11px; cursor: pointer; transition: all 0.15s; text-align: center; white-space: nowrap; }
+.btn:hover { border-color: #2563eb; color: #fff; }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: linear-gradient(180deg, #2563eb, #1d4ed8); border-color: #3b82f6; color: #fff; }
+.btn.primary:hover { background: linear-gradient(180deg, #3b82f6, #2563eb); }
+.btn.danger { background: linear-gradient(180deg, #dc2626, #b91c1c); border-color: #ef4444; color: #fff; }
+.btn.ghost { background: transparent; border-color: #2a3a5a; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+.input-group { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; }
+.input-group label { color: #8aa0c8; flex-shrink: 0; }
+.input-group input[type="number"], .input-group select { width: 70px; padding: 3px 6px; background: #0a1020; border: 1px solid #1e3a6a; border-radius: 4px; color: #e0e6f0; font-size: 11px; text-align: right; }
+.input-group input[type="number"]:focus, .input-group select:focus { outline: none; border-color: #2563eb; }
+.roi-display { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10px; }
+.roi-card { background: #0a1020; border: 1px solid #1e2a4a; border-radius: 5px; padding: 6px 8px; }
+.roi-card.dynamic { border-left: 3px solid #00dcff; }
+.roi-card.reference { border-left: 3px solid #22c55e; }
+.roi-card .label { color: #8aa0c8; margin-bottom: 2px; font-size: 10px; }
+.roi-card .value { color: #e0e6f0; font-family: monospace; font-size: 10px; }
+.metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.metric { background: #0a1020; border: 1px solid #1e2a4a; border-radius: 5px; padding: 6px 8px; text-align: center; }
+.metric .value { font-size: 18px; font-weight: 700; font-family: 'Consolas', monospace; line-height: 1.1; }
+.metric .unit { font-size: 10px; color: #8aa0c8; margin-left: 1px; }
+.metric .label { font-size: 10px; color: #5a7ab5; margin-top: 1px; }
+.metric.disp .value { color: #00dcff; }
+.metric.raw .value { color: #eab308; }
+.metric.conf .value { color: #22c55e; }
+.metric.scale .value { color: #c084fc; }
+.log-area { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px 12px; overflow: hidden; }
+.log-title { font-size: 11px; color: #8aa0c8; margin-bottom: 4px; display: flex; justify-content: space-between; }
+#log { flex: 1; overflow-y: auto; font-family: 'Consolas', 'Monaco', monospace; font-size: 10px; line-height: 1.35; color: #6b83a8; background: #050810; border-radius: 4px; padding: 6px; }
+#log .log-info { color: #6b83a8; }
+#log .log-ok { color: #22c55e; }
+#log .log-warn { color: #eab308; }
+#log .log-err { color: #ef4444; }
+.roi-selector-tip { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.85); padding: 16px 24px; border-radius: 8px; border: 1px solid #1e3a6a; color: #fff; font-size: 14px; text-align: center; pointer-events: none; z-index: 10; }
+.roi-selector-tip .step { font-size: 20px; color: #00dcff; margin-bottom: 8px; }
+.checkbox-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8aa0c8; cursor: pointer; }
+.footer-tip { position: absolute; bottom: 8px; left: 12px; background: rgba(0,0,0,0.6); padding: 6px 12px; border-radius: 4px; font-size: 11px; color: #8aa0c8; pointer-events: none; }
+.footer-tip kbd { background: #1e2a4a; border: 1px solid #2a3a5a; border-radius: 3px; padding: 1px 5px; margin: 0 2px; font-family: monospace; color: #c0d4f0; }
+.scrollbar::-webkit-scrollbar { width: 6px; }
+.scrollbar::-webkit-scrollbar-track { background: #050810; }
+.scrollbar::-webkit-scrollbar-thumb { background: #1e3a6a; border-radius: 3px; }
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 48px 1fr auto;
+    height: auto;
+    min-height: 100vh;
+  }
+  .sidebar {
+    border-left: none;
+    border-top: 1px solid #1e2a4a;
+    max-height: 40vh;
+  }
+  .main { grid-template-rows: 1fr 150px; }
+  .status-bar { gap: 10px; font-size: 10px; }
+  header { padding: 0 12px; }
+  .logo .title { font-size: 14px; }
+  .logo .sub { display: none; }
+}
+body.is-mobile #btnSwitchCamera { display: block !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="icon">🌉</div>
+      <div class="title">桥梁位移监测系统</div>
+      <div class="sub">Bridge Displacement Monitor · LK Optical Flow</div>
+    </div>
+    <div class="status-bar">
+      <span><span id="statusCamera" class="status-dot idle"></span><span id="statusCameraText">摄像头：未启动</span></span>
+      <span><span id="statusTrack" class="status-dot idle"></span><span id="statusTrackText">追踪：未初始化</span></span>
+      <span><span id="statusConf" class="status-dot idle"></span><span id="statusConfText">置信度：--</span></span>
+      <span id="clockDisplay">--:--:--</span>
+    </div>
+  </header>
+  <div class="main">
+    <div class="video-container" id="videoContainer">
+      <canvas id="videoCanvas"></canvas>
+      <canvas id="overlay"></canvas>
+      <canvas id="selectionCanvas" style="display:none;"></canvas>
+      <div id="roiTip" class="roi-selector-tip" style="display:none;"></div>
+      <div class="footer-tip">按键：<kbd>空格</kbd>启动/停止 · <kbd>R</kbd>重置 · <kbd>C</kbd>重选ROI · <kbd>S</kbd>截图</div>
+    </div>
+    <div class="chart-container">
+      <div class="chart-header"><span>实时位移曲线 (mm)</span><span id="chartInfo">样本: 0</span></div>
+      <canvas id="chartCanvas"></canvas>
+    </div>
+  </div>
+  <div class="sidebar scrollbar">
+    <div class="panel">
+      <div class="panel-title">摄像头控制</div>
+      <div class="panel-body">
+        <div class="btn-row">
+          <button class="btn primary" id="btnStart">启动摄像头</button>
+          <button class="btn danger" id="btnStop" disabled>停止</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost" id="btnSwitchCamera" style="display:none">🔄 切换摄像头</button>
+        </div>
+        <div class="input-group"><label>分辨率</label>
+          <select id="resolution">
+            <option value="1280x720">1280×720</option>
+            <option value="640x480" selected>640×480</option>
+          </select>
+        </div>
+        <div class="checkbox-row"><input type="checkbox" id="chkFlip"><label for="chkFlip">水平翻转</label></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">ROI 选择</div>
+      <div class="panel-body">
+        <div class="roi-display">
+          <div class="roi-card dynamic"><div class="label">动态 ROI</div><div class="value" id="roiDynamicText">未设置</div></div>
+          <div class="roi-card reference"><div class="label">参考 ROI</div><div class="value" id="roiReferenceText">未设置</div></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="btnSelectDynamic">动态ROI</button>
+          <button class="btn" id="btnSelectReference">参考ROI</button>
+        </div>
+        <button class="btn ghost" id="btnSelectAll">一键选择两个ROI</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">参数配置</div>
+      <div class="panel-body">
+        <div class="input-group"><label>像素标定(mm/px)</label><input type="number" id="mmPerPx" value="0.08" step="0.001" min="0.001"></div>
+        <div class="input-group"><label>测量方向</label>
+          <select id="component"><option value="y" selected>Y(垂直)</option><option value="x">X(水平)</option></select>
+        </div>
+        <div class="input-group"><label>中值滤波窗口</label><input type="number" id="medianWindow" value="5" step="1" min="1" max="20"></div>
+        <div class="input-group"><label>EMA系数α</label><input type="number" id="emaAlpha" value="0.35" step="0.05" min="0.05" max="1"></div>
+        <div class="input-group"><label>最大角点数</label><input type="number" id="maxCorners" value="90" step="10" min="10" max="500"></div>
+        <div class="input-group"><label>LK窗口</label><input type="number" id="winSize" value="21" step="2" min="5" max="51"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">实时数据</div>
+      <div class="metric-grid">
+        <div class="metric disp"><div class="value" id="dispValue">+0.000<span class="unit">mm</span></div><div class="label">滤波位移</div></div>
+        <div class="metric raw"><div class="value" id="rawValue">+0.000<span class="unit">mm</span></div><div class="label">原始位移</div></div>
+        <div class="metric conf"><div class="value" id="confValue">0.00</div><div class="label">置信度</div></div>
+        <div class="metric scale"><div class="value" id="pointCount">0</div><div class="label">追踪点数</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">数据导出</div>
+      <div class="panel-body">
+        <div class="btn-row">
+          <button class="btn" id="btnStartTracking" disabled>▶ 开始追踪</button>
+          <button class="btn" id="btnReset" disabled>↻ 重置</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost" id="btnExportCSV">⬇ 导出CSV</button>
+          <button class="btn ghost" id="btnScreenshot">📷 截图</button>
+        </div>
+      </div>
+    </div>
+    <div class="log-area">
+      <div class="log-title"><span>运行日志</span><span id="fpsCounter">-- FPS</span></div>
+      <div id="log" class="scrollbar"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+const logEl = $('log');
+function log(msg, type = 'info') {
+  const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const line = document.createElement('div');
+  line.className = 'log-' + type;
+  line.textContent = `[${t}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+  if (logEl.children.length > 200) logEl.removeChild(logEl.firstChild);
+}
+
+setInterval(() => { $('clockDisplay').textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false }); }, 1000);
+
+const state = {
+  video: null, videoTrack: null,
+  canvas: $('videoCanvas'), overlay: $('overlay'),
+  selectionCanvas: $('selectionCanvas'), chartCanvas: $('chartCanvas'),
+  ctx: null, overlayCtx: null, chartCtx: null,
+  dynamicROI: null, referenceROI: null,
+  tracking: false, rawDisp: 0, filteredDisp: 0, history: [],
+  frameCount: 0, lastTime: 0, fps: 0,
+  component: 'y', invertSign: false, mmPerPx: 0.08,
+  medianWindow: 5, emaAlpha: 0.35,
+  maxCorners: 90, winSize: 21, maxLevel: 3, minPoints: 12,
+  frameId: null, startTime: 0, csvRows: [],
+  currentFacingMode: 'user', isMobile: false, flipHorizontal: false,
+};
+
+// 设备检测：PC 用前置(user)，手机用后置(environment)
+(function detectDevice() {
+  const ua = navigator.userAgent || '';
+  state.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) || 'ontouchstart' in window;
+  state.currentFacingMode = state.isMobile ? 'environment' : 'user';
+})();
+
+// === 坐标换算：视频内部像素 ⇄ 容器显示坐标 ===
+// 核心设计：videoCanvas CSS = contain区域, internal = 视频分辨率
+// 浏览器统一缩放（无失真），overlay/selectionCanvas = 整个容器
+
+function getContainerRect() {
+  const vc = $('videoContainer');
+  return { cw: vc.clientWidth, ch: vc.clientHeight };
+}
+
+// 计算 videoCanvas 的 CSS 显示区域（contain 模式，居中）
+// 返回值同时用于：设置 videoCanvas CSS 尺寸 + 坐标换算基准
+function getVideoDisplayRect() {
+  const { cw, ch } = getContainerRect();
+  const vw = state.canvas.width || 0, vh = state.canvas.height || 0;
+  if (!vw || !vh || !cw || !ch) return { left: 0, top: 0, w: cw, h: ch, scaleX: 1, scaleY: 1 };
+  const scale = Math.min(cw / vw, ch / vh);
+  const dispW = Math.floor(vw * scale);
+  const dispH = Math.floor(vh * scale);
+  return {
+    left: Math.floor((cw - dispW) / 2),
+    top: Math.floor((ch - dispH) / 2),
+    w: dispW,
+    h: dispH,
+    scaleX: scale,
+    scaleY: scale,
+  };
+}
+
+// 视频像素坐标 → 容器显示坐标
+function vpxToCx(vx, vy) {
+  const r = getVideoDisplayRect();
+  return { x: r.left + vx * r.scaleX, y: r.top + vy * r.scaleY };
+}
+
+// 容器显示坐标 → 视频像素坐标
+function cxToVpx(cx, cy) {
+  const r = getVideoDisplayRect();
+  const vw = state.canvas.width || 0, vh = state.canvas.height || 0;
+  const vx = clamp((cx - r.left) / r.scaleX, 0, Math.max(0, vw - 1));
+  const vy = clamp((cy - r.top) / r.scaleY, 0, Math.max(0, vh - 1));
+  return { x: vx, y: vy };
+}
+
+function initCanvases(w, h) {
+  const dpr = window.devicePixelRatio || 1;
+  const { cw, ch } = getContainerRect();
+  const dprLimit = Math.min(dpr, 2);
+
+  // 1. videoCanvas: 内部 = 视频分辨率, CSS = contain区域
+  state.canvas.width = w; state.canvas.height = h;
+  state.canvas.style.position = 'absolute';
+  const rect = getVideoDisplayRect();
+  state.canvas.style.left = rect.left + 'px';
+  state.canvas.style.top = rect.top + 'px';
+  state.canvas.style.width = rect.w + 'px';
+  state.canvas.style.height = rect.h + 'px';
+  state.ctx = state.canvas.getContext('2d', { willReadFrequently: true });
+
+  // 2. overlay: 内部 = 容器 × DPR, CSS = 容器(全屏覆盖)
+  state.overlay.width = Math.max(1, Math.floor(cw * dprLimit));
+  state.overlay.height = Math.max(1, Math.floor(ch * dprLimit));
+  state.overlay.style.width = cw + 'px';
+  state.overlay.style.height = ch + 'px';
+  state.overlayCtx = state.overlay.getContext('2d');
+  state.overlayCtx.setTransform(dprLimit, 0, 0, dprLimit, 0, 0);
+
+  // 3. selectionCanvas: 同 overlay
+  state.selectionCanvas.width = Math.max(1, Math.floor(cw * dprLimit));
+  state.selectionCanvas.height = Math.max(1, Math.floor(ch * dprLimit));
+  state.selectionCanvas.style.width = cw + 'px';
+  state.selectionCanvas.style.height = ch + 'px';
+  const selCtx = state.selectionCanvas.getContext('2d');
+  selCtx.setTransform(dprLimit, 0, 0, dprLimit, 0, 0);
+
+  // 4. chart
+  state.chartCtx = state.chartCanvas.getContext('2d');
+
+  log(`画布初始化: video=${w}×${h}px → CSS ${rect.w}×${rect.h} @(${rect.left},${rect.top}) | 容器=${cw}×${ch} | scale=${rect.scaleX.toFixed(3)}`, 'info');
+}
+
+// === Computer Vision Algorithms ===
+
+function toGray(imageData) {
+  const { data, width, height } = imageData;
+  const gray = new Float32Array(width * height);
+  for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+    gray[j] = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+  }
+  return { gray, width, height, w: width, h: height };
+}
+
+function gaussianDownsample(src, w, h) {
+  const coeff = [0.006136, 0.132412, 0.225197, 0.132412, 0.006136];
+  const sw = Math.floor(w / 2), sh = Math.floor(h / 2);
+  const tmp = new Float32Array(w * sh);
+  for (let y = 0; y < sh; y++) {
+    const sy = y * 2;
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let k = -2; k <= 2; k++) {
+        const sx = clamp(x + k, 0, w - 1);
+        const syy = clamp(sy, 0, h - 1);
+        sum += src[syy * w + sx] * coeff[k + 2];
+      }
+      tmp[y * w + x] = sum;
+    }
+  }
+  const dst = new Float32Array(sw * sh);
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      let sum = 0;
+      for (let k = -2; k <= 2; k++) {
+        const sx = x * 2;
+        const sy = clamp(y + k, 0, sh - 1);
+        sum += tmp[sy * w + sx] * coeff[k + 2];
+      }
+      dst[y * sw + x] = sum;
+    }
+  }
+  return dst;
+}
+
+function buildPyramid(gray, width, height, maxLevel) {
+  const pyramid = [{ data: gray, w: width, h: height }];
+  let curW = width, curH = height, curData = gray;
+  for (let level = 0; level < maxLevel; level++) {
+    const nextW = Math.floor(curW / 2), nextH = Math.floor(curH / 2);
+    if (nextW < 8 || nextH < 8) break;
+    const nextData = gaussianDownsample(curData, curW, curH);
+    pyramid.push({ data: nextData, w: nextW, h: nextH });
+    curW = nextW; curH = nextH; curData = nextData;
+  }
+  return pyramid;
+}
+
+function bilinearAt(data, w, h, x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const x0 = clamp(xi, 0, w - 1), x1 = clamp(xi + 1, 0, w - 1);
+  const y0 = clamp(yi, 0, h - 1), y1 = clamp(yi + 1, 0, h - 1);
+  const v00 = data[y0 * w + x0], v10 = data[y0 * w + x1];
+  const v01 = data[y1 * w + x0], v11 = data[y1 * w + x1];
+  return (1-xf)*(1-yf)*v00 + xf*(1-yf)*v10 + (1-xf)*yf*v01 + xf*yf*v11;
+}
+
+function computeGradients(data, w, h) {
+  const Ix = new Float32Array(w * h), Iy = new Float32Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      Ix[i] = (data[i + 1] - data[i - 1]) * 0.25 + (data[i + w + 1] - data[i - w + 1]) * 0.25;
+      Iy[i] = (data[i + w] - data[i - w]) * 0.25 + (data[i + w + 1] - data[i + w - 1]) * 0.25;
+    }
+  }
+  return { Ix, Iy };
+}
+
+function detectCorners(gray, w, h, roi, maxCorners, qualityLevel, minDistance, blockSize) {
+  const rx0 = roi ? roi[0] : 0, ry0 = roi ? roi[1] : 0;
+  const rrw = roi ? roi[2] : w, rrh = roi ? roi[3] : h;
+  const x0 = Math.max(0, Math.min(rx0, w - 1));
+  const y0 = Math.max(0, Math.min(ry0, h - 1));
+  const rw = Math.min(rrw, w - x0);
+  const rh = Math.min(rrh, h - y0);
+  
+  if (rw < 3 || rh < 3) {
+    return { points: [], diag: { method: 'none', maxVal: 0, threshold: 0, candidates: 0, totalPixels: rw*rh, reason: 'roi_too_small' } };
+  }
+  
+  // 计算 ROI 基本统计
+  let sum = 0, sumSq = 0;
+  const roiPixels = rw * rh;
+  for (let y = y0; y < y0 + rh; y++) {
+    for (let x = x0; x < x0 + rw; x++) {
+      const v = gray[y * w + x];
+      sum += v; sumSq += v * v;
+    }
+  }
+  const mean = sum / roiPixels;
+  const variance = Math.max(0, sumSq / roiPixels - mean * mean);
+  const stdDev = Math.sqrt(variance);
+  
+  // === 核心方法：局部方差特征检测（最鲁棒） ===
+  // 对每个像素计算局部窗口内的方差，取方差最大的点作为特征点
+  const winR = Math.floor(blockSize / 2);
+  const stride = Math.max(1, Math.floor(minDistance / 2));
+  const responses = new Float64Array(rw * rh);
+  let maxResp = 0;
+  let nonZeroCount = 0;
+  
+  for (let y = y0 + winR; y < y0 + rh - winR; y += stride) {
+    for (let x = x0 + winR; x < x0 + rw - winR; x += stride) {
+      let wSum = 0, wSumSq = 0, wCount = 0;
+      for (let dy = -winR; dy <= winR; dy++) {
+        for (let dx = -winR; dx <= winR; dx++) {
+          const sx = x + dx, sy = y + dy;
+          if (sx < 0 || sx >= w || sy < 0 || sy >= h) continue;
+          const v = gray[sy * w + sx];
+          wSum += v; wSumSq += v * v; wCount++;
+        }
+      }
+      if (wCount < 3) continue;
+      const wMean = wSum / wCount;
+      const wVar = Math.max(0, wSumSq / wCount - wMean * wMean);
+      const val = Math.sqrt(wVar);
+      const lx = x - x0, ly = y - y0;
+      responses[ly * rw + lx] = val;
+      if (val > maxResp) maxResp = val;
+      if (val > 0.01) nonZeroCount++;
+    }
+  }
+  
+  // 收集候选点（响应 > 阈值）
+  const threshold = Math.max(maxResp * qualityLevel, maxResp * 0.05);
+  const candidates = [];
+  for (let ly = 0; ly < rh; ly++) {
+    for (let lx = 0; lx < rw; lx++) {
+      const val = responses[ly * rw + lx];
+      if (val < threshold) continue;
+      // 3x3 非极大值抑制
+      let isMax = true;
+      for (let dy = -1; dy <= 1 && isMax; dy++) {
+        for (let dx = -1; dx <= 1 && isMax; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = lx + dx, ny = ly + dy;
+          if (nx < 0 || nx >= rw || ny < 0 || ny >= rh) continue;
+          if (responses[ny * rw + nx] > val) isMax = false;
+        }
+      }
+      if (isMax && val > 0.01) {
+        candidates.push({ x: lx + x0, y: ly + y0, val });
+      }
+    }
+  }
+  
+  // 按响应强度排序 + 最小距离去重
+  candidates.sort((a, b) => b.val - a.val);
+  const selected = [];
+  const minDist2 = minDistance * minDistance;
+  for (const c of candidates) {
+    let tooClose = false;
+    for (const s of selected) {
+      const dx = c.x - s.x, dy = c.y - s.y;
+      if (dx*dx + dy*dy < minDist2) { tooClose = true; break; }
+    }
+    if (!tooClose) selected.push({ x: c.x, y: c.y });
+    if (selected.length >= maxCorners) break;
+  }
+  
+  // 如果局部方差失败，用像素差值作为最终兜底
+  let method = 'variance';
+  if (selected.length === 0 && stdDev > 0.5) {
+    method = 'pixel_diff_fallback';
+    // 简单找灰度值与均值差距最大的像素
+    const diffCandidates = [];
+    for (let y = y0 + 1; y < y0 + rh - 1; y++) {
+      for (let x = x0 + 1; x < x0 + rw - 1; x++) {
+        const v = gray[y * w + x];
+        const diff = Math.abs(v - mean);
+        if (diff > stdDev * 0.5) {
+          diffCandidates.push({ x, y, val: diff });
+        }
+      }
+    }
+    diffCandidates.sort((a, b) => b.val - a.val);
+    const sel2 = [];
+    for (const c of diffCandidates) {
+      let tooClose = false;
+      for (const s of sel2) {
+        const dx = c.x - s.x, dy = c.y - s.y;
+        if (dx*dx + dy*dy < minDist2) { tooClose = true; break; }
+      }
+      if (!tooClose) sel2.push({ x: c.x, y: c.y });
+      if (sel2.length >= maxCorners) break;
+    }
+    selected.push(...sel2);
+  }
+  
+  return {
+    points: selected,
+    diag: {
+      method,
+      maxVal: maxResp,
+      threshold,
+      candidates: candidates.length,
+      totalPixels: roiPixels,
+      roiMean: mean,
+      roiStd: stdDev,
+      nonZeroResponses: nonZeroCount
+    }
+  };
+}
+
+function calcOpticalFlowPyrLK(prevGray, currGray, w, h, prevPoints, winSize, maxLevel) {
+  const prevPyr = buildPyramid(prevGray, w, h, maxLevel);
+  const currPyr = buildPyramid(currGray, w, h, maxLevel);
+  const nLevels = Math.min(prevPyr.length, currPyr.length);
+  let nextPoints = prevPoints.map(p => ({ x: p.x, y: p.y }));
+  for (let lvl = nLevels - 1; lvl >= 0; lvl--) {
+    const prevLvl = prevPyr[lvl], currLvl = currPyr[lvl];
+    const scale = Math.pow(2, lvl);
+    const prevGrad = computeGradients(prevLvl.data, prevLvl.w, prevLvl.h);
+    for (let i = 0; i < nextPoints.length; i++) {
+      const px = prevPoints[i].x / scale, py = prevPoints[i].y / scale;
+      const estX = nextPoints[i].x / scale, estY = nextPoints[i].y / scale;
+      const winHalf = Math.floor(winSize / 2);
+      let Axx = 0, Axy = 0, Ayy = 0, bx = 0, by = 0;
+      for (let dy = -winHalf; dy <= winHalf; dy++) {
+        for (let dx = -winHalf; dx <= winHalf; dx++) {
+          const sx = Math.round(px) + dx, sy = Math.round(py) + dy;
+          if (sx < 1 || sx >= prevLvl.w - 1 || sy < 1 || sy >= prevLvl.h - 1) continue;
+          const gx = prevGrad.Ix[sy * prevLvl.w + sx], gy = prevGrad.Iy[sy * prevLvl.w + sx];
+          const fx = bilinearAt(prevLvl.data, prevLvl.w, prevLvl.h, sx, sy);
+          const cx = bilinearAt(currLvl.data, currLvl.w, currLvl.h, sx + (estX - px), sy + (estY - py));
+          const ft = cx - fx;
+          Axx += gx * gx; Axy += gx * gy; Ayy += gy * gy;
+          bx += gx * ft; by += gy * ft;
+        }
+      }
+      const det = Axx * Ayy - Axy * Axy;
+      if (Math.abs(det) > 1e-6) {
+        const vx = (Ayy * bx - Axy * by) / det;
+        const vy = (-Axy * bx + Axx * by) / det;
+        nextPoints[i].x = (estX + vx) * scale;
+        nextPoints[i].y = (estY + vy) * scale;
+      } else {
+        nextPoints[i].x = estX * scale;
+        nextPoints[i].y = estY * scale;
+      }
+    }
+  }
+  const status = new Uint8Array(prevPoints.length);
+  const err = new Float32Array(prevPoints.length);
+  const winHalf = Math.floor(winSize / 2);
+  for (let i = 0; i < prevPoints.length; i++) {
+    const px = Math.round(prevPoints[i].x), py = Math.round(prevPoints[i].y);
+    const nx = Math.round(nextPoints[i].x), ny = Math.round(nextPoints[i].y);
+    let inROI = true;
+    if (state.dynamicROI) {
+      const r = state.dynamicROI;
+      inROI = nx >= r[0] && nx < r[0]+r[2] && ny >= r[1] && ny < r[1]+r[3];
+    }
+    if (state.referenceROI) {
+      const r = state.referenceROI;
+      inROI = inROI || (nx >= r[0] && nx < r[0]+r[2] && ny >= r[1] && ny < r[1]+r[3]);
+    }
+    let error = 0;
+    for (let dy = -winHalf; dy <= winHalf; dy++) {
+      for (let dx = -winHalf; dx <= winHalf; dx++) {
+        const sx = clamp(px + dx, 0, w - 1), sy = clamp(py + dy, 0, h - 1);
+        const cxp = clamp(nx + dx, 0, w - 1), cyp = clamp(ny + dy, 0, h - 1);
+        const fv = prevGray[sy * w + sx], cv2 = currGray[cyp * w + cxp];
+        error += (cv2 - fv) * (cv2 - fv);
+      }
+    }
+    error = Math.sqrt(error) / (winSize * winSize);
+    if (inROI && error < 45.0) { status[i] = 1; err[i] = error; }
+    else { status[i] = 0; err[i] = error; }
+  }
+  return { nextPoints, status, err };
+}
+
+function median(arr) {
+  const s = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length ? (s.length % 2 ? s[mid] : (s[mid-1] + s[mid]) / 2) : 0;
+}
+
+// === LK Tracker ===
+class LKTracker {
+  constructor(name) {
+    this.name = name;
+    this.roi = null;
+    this.prevGray = null;
+    this.prevPoints = null;
+    this.offset = [0, 0];
+    this.lastDelta = [0, 0];
+    this.confidence = 0;
+    this.validPoints = 0;
+    this.reinitialized = false;
+    this.color = name === 'dynamic' ? [0, 220, 255] : [90, 255, 90];
+  }
+  setROI(roi) { this.roi = roi; }
+  initialize(gray, w, h, resetOffset) {
+    if (!this.roi) return false;
+    const result = detectCorners(gray, w, h, this.roi, state.maxCorners, 0.01, 6, 7);
+    this.prevGray = gray; this.prevPoints = result.points;
+    this.reinitialized = true; this.validPoints = result.points.length;
+    if (resetOffset) { this.offset = [0, 0]; this.lastDelta = [0, 0]; }
+    this.confidence = result.points.length > 0 ? 1.0 : 0;
+    this._diag = result.diag;
+    return result.points.length > 0;
+  }
+  // 降级检测：用更宽松的参数重试
+  initializeLenient(gray, w, h, resetOffset) {
+    if (!this.roi) return false;
+    const result = detectCorners(gray, w, h, this.roi, state.maxCorners, 0.001, 3, 5);
+    this.prevGray = gray; this.prevPoints = result.points;
+    this.reinitialized = true; this.validPoints = result.points.length;
+    if (resetOffset) { this.offset = [0, 0]; this.lastDelta = [0, 0]; }
+    this.confidence = result.points.length > 0 ? 1.0 : 0;
+    this._diag = result.diag;
+    return result.points.length > 0;
+  }
+  reset(gray, w, h) { return this.initialize(gray, w, h, true); }
+  update(gray, w, h) {
+    if (!this.prevGray || !this.prevPoints || this.prevPoints.length === 0) {
+      const ok = this.initialize(gray, w, h, false);
+      if (!ok) this.initializeLenient(gray, w, h, false);
+      return { offset: this.offset.slice(), delta: [0,0], confidence: this.validPoints > 0 ? 1.0 : 0, valid: 0, reinit: true };
+    }
+    const result = calcOpticalFlowPyrLK(this.prevGray, gray, w, h, this.prevPoints, state.winSize, state.maxLevel);
+    const validPoints = [];
+    for (let i = 0; i < result.status.length; i++) {
+      if (result.status[i]) validPoints.push({ old: this.prevPoints[i], new: result.nextPoints[i], err: result.err[i] });
+    }
+    this.validPoints = validPoints.length;
+    if (validPoints.length < state.minPoints) {
+      const ok = this.initialize(gray, w, h, false);
+      if (!ok) this.initializeLenient(gray, w, h, false);
+      this.confidence = validPoints.length > 0 ? 0.25 : 0;
+      return { offset: this.offset.slice(), delta: this.lastDelta.slice(), confidence: this.confidence, valid: 0, reinit: true };
+    }
+    const deltas = validPoints.map(p => [p.new.x - p.old.x, p.new.y - p.old.y]);
+    const dx = median(deltas.map(d => d[0])), dy = median(deltas.map(d => d[1]));
+    this.lastDelta = [dx, dy];
+    this.offset[0] += dx; this.offset[1] += dy;
+    this.prevPoints = validPoints.map(p => ({ x: p.new.x, y: p.new.y }));
+    this.prevGray = gray; this.reinitialized = false;
+    const ratio = validPoints.length / result.status.length;
+    const errors = validPoints.map(p => p.err);
+    const medErr = errors.length ? median(errors) : 0;
+    const errScore = 1.0 / (1.0 + medErr / 15.0);
+    this.confidence = Math.max(0, Math.min(1, 0.65 * ratio + 0.35 * errScore));
+    return { offset: this.offset.slice(), delta: this.lastDelta.slice(), confidence: this.confidence, valid: validPoints.length, reinit: false };
+  }
+  draw(ctx, color) {
+    if (!this.prevPoints) return;
+    ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 1;
+    for (const p of this.prevPoints) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+// === Displacement Estimator ===
+class DisplacementEstimator {
+  constructor(mmPerPx, component, invertSign, enabled, medianWindow, emaAlpha) {
+    this.mmPerPx = mmPerPx;
+    this.componentIdx = component === 'x' ? 0 : 1;
+    this.sign = invertSign ? -1 : 1;
+    this.enabled = enabled;
+    this.values = [];
+    this.windowSize = medianWindow;
+    this.emaAlpha = emaAlpha;
+    this.filtered = null;
+  }
+  reset() { this.values = []; this.filtered = null; }
+  update(relativeOffset) {
+    const raw = relativeOffset[this.componentIdx] * this.mmPerPx * this.sign;
+    if (!this.enabled) return { raw, filtered: raw };
+    this.values.push(raw);
+    if (this.values.length > this.windowSize) this.values.shift();
+    const med = median(this.values);
+    if (this.filtered === null) this.filtered = med;
+    else this.filtered = this.emaAlpha * med + (1 - this.emaAlpha) * this.filtered;
+    return { raw, filtered: this.filtered };
+  }
+}
+
+// === Global instances ===
+let dynamicTracker = new LKTracker('dynamic');
+let referenceTracker = new LKTracker('reference');
+let estimator = null;
+
+function getCurrentGray() {
+  const w = state.canvas.width, h = state.canvas.height;
+  const imgData = state.ctx.getImageData(0, 0, w, h);
+  return toGray(imgData);
+}
+
+function startTracking() {
+  try {
+    log('▶ startTracking 被调用', 'info');
+
+    // 实时同步参数到 state
+    state.mmPerPx = parseFloat($('mmPerPx').value) || 0;
+    state.component = $('component').value;
+    state.medianWindow = parseInt($('medianWindow').value) || 5;
+    state.emaAlpha = parseFloat($('emaAlpha').value) || 0.35;
+    state.maxCorners = parseInt($('maxCorners').value) || 90;
+    state.winSize = parseInt($('winSize').value) || 21;
+    log(`参数: mmPerPx=${state.mmPerPx}, component=${state.component}, winSize=${state.winSize}, maxCorners=${state.maxCorners}`, 'info');
+
+    if (!state.dynamicROI) { log('❌ 请先选择动态 ROI', 'warn'); return; }
+    if (!state.mmPerPx || state.mmPerPx <= 0) { log('❌ 请设置有效的像素标定值 (当前: ' + state.mmPerPx + ')', 'warn'); return; }
+    if (!state.canvas || !state.canvas.width || !state.ctx) { 
+      log('❌ 画布未就绪，正在等待视频帧...', 'warn'); 
+      // 尝试重新从视频获取 canvas
+      if (state.video && state.video.videoWidth > 0) {
+        initCanvases(state.video.videoWidth, state.video.videoHeight);
+        log('画布已重新初始化', 'info');
+      } else {
+        return;
+      }
+    }
+
+    log(`动态ROI: ${JSON.stringify(state.dynamicROI)}`, 'info');
+    if (state.referenceROI) {
+      log(`参考ROI: ${JSON.stringify(state.referenceROI)}`, 'info');
+      // 检查两个ROI是否重叠过多
+      const dROI = state.dynamicROI, rROI = state.referenceROI;
+      const overlapX = Math.max(0, Math.min(dROI[0]+dROI[2], rROI[0]+rROI[2]) - Math.max(dROI[0], rROI[0]));
+      const overlapY = Math.max(0, Math.min(dROI[1]+dROI[3], rROI[1]+rROI[3]) - Math.max(dROI[1], rROI[1]));
+      const overlapArea = overlapX * overlapY;
+      const dArea = dROI[2] * dROI[3];
+      const overlapRatio = dArea > 0 ? overlapArea / dArea : 0;
+      if (overlapRatio > 0.5) {
+        log(`⚠ 动态ROI与参考ROI重叠度 ${(overlapRatio*100).toFixed(0)}%！参考ROI应选在不同位置（固定不动的物体）`, 'warn');
+      }
+    }
+
+    dynamicTracker.setROI(state.dynamicROI);
+    if (state.referenceROI) { referenceTracker.setROI(state.referenceROI); }
+    estimator = new DisplacementEstimator(state.mmPerPx, state.component, state.invertSign, true, state.medianWindow, state.emaAlpha);
+
+    log('正在获取灰度图像...', 'info');
+    // 关键修复：确保视频帧已渲染到 canvas
+    const v = state.video;
+    const vw = v.videoWidth, vh = v.videoHeight;
+    const ctx = state.ctx;
+    if (!ctx) {
+      log('❌ 画布上下文为空，无法继续', 'err');
+      return;
+    }
+    const flipNow = $('chkFlip').checked;
+    if (flipNow) {
+      ctx.save(); ctx.scale(-1, 1);
+      ctx.drawImage(v, -vw, 0, vw, vh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(v, 0, 0, vw, vh);
+    }
+    const grayData = getCurrentGray();
+    log(`灰度图尺寸: ${grayData.w}×${grayData.h}`, 'info');
+
+    // 检查图像是否有效（全黑/全白说明视频帧还没渲染）
+    let minVal = Infinity, maxVal = -Infinity, sumVal = 0, sumSq = 0, count = 0;
+    const sampleStep = Math.max(1, Math.floor(grayData.gray.length / 1000));
+    for (let i = 0; i < grayData.gray.length; i += sampleStep) {
+      const v = grayData.gray[i];
+      if (v < minVal) minVal = v;
+      if (v > maxVal) maxVal = v;
+      sumVal += v; sumSq += v * v; count++;
+    }
+    const meanVal = count > 0 ? sumVal / count : 0;
+    const stdVal = count > 0 ? Math.sqrt(Math.max(0, sumSq / count - meanVal * meanVal)) : 0;
+    log(`全图: 亮度 ${minVal.toFixed(1)}~${maxVal.toFixed(1)}, 均值=${meanVal.toFixed(1)}, 标准差=${stdVal.toFixed(1)}`, 'info');
+    if (maxVal - minVal < 5) {
+      log('⚠ 图像几乎是纯色，可能视频帧还没渲染完。请稍等1秒后重试', 'warn');
+      return;
+    }
+
+    // === 关键诊断：提取 ROI 区域的实际像素内容 ===
+    const [rx, ry, rrw, rrh] = state.dynamicROI;
+    log(`ROI诊断: video坐标=(${rx},${ry}) 大小=${rrw}×${rrh} | 视频尺寸=${grayData.w}×${grayData.h}`, 'info');
+    // 边界检查
+    if (rx + rrw > grayData.w || ry + rrh > grayData.h || rx < 0 || ry < 0) {
+      log(`⚠ ROI超出视频范围！ROI: (${rx},${ry})+${rrw}×${rrh}, 视频: ${grayData.w}×${grayData.h}`, 'err');
+      return;
+    }
+    // 提取 ROI 区域统计
+    let roiMin = 255, roiMax = 0, roiSum = 0, roiSumSq = 0, roiCount = 0;
+    let roiGradSum = 0;
+    for (let yy = ry; yy < ry + rrh; yy++) {
+      for (let xx = rx; xx < rx + rrw; xx++) {
+        const idx = yy * grayData.w + xx;
+        const v = grayData.gray[idx];
+        if (v < roiMin) roiMin = v;
+        if (v > roiMax) roiMax = v;
+        roiSum += v; roiSumSq += v * v; roiCount++;
+        // 简单梯度估计
+        if (xx + 1 < rx + rrw) roiGradSum += Math.abs(v - grayData.gray[idx + 1]);
+      }
+    }
+    const roiMean = roiCount > 0 ? roiSum / roiCount : 0;
+    const roiStd = roiCount > 0 ? Math.sqrt(Math.max(0, roiSumSq / roiCount - roiMean * roiMean)) : 0;
+    const roiGradAvg = roiCount > 0 ? roiGradSum / roiCount : 0;
+    log(`ROI内: ${roiCount}像素, 亮度${roiMin.toFixed(1)}~${roiMax.toFixed(1)}, 均值=${roiMean.toFixed(1)}, 标准差=${roiStd.toFixed(1)}, 平均梯度=${roiGradAvg.toFixed(2)}`, 'info');
+    
+    if (roiStd < 2 && roiGradAvg < 0.5) {
+      log('⚠ ROI区域几乎无纹理（标准差=' + roiStd.toFixed(1) + '）。请选择有更多纹理/边缘的区域', 'warn');
+    }
+
+    // === 关键验证：在视频 canvas 上直接绘制 ROI 标记 + 热力图 ===
+    if (!ctx) {
+      log('⚠ 画布上下文不可用，跳过标记绘制', 'warn');
+    } else {
+      const [rx2, ry2, rrw2, rrh2] = state.dynamicROI;
+      ctx.save();
+      // 先画 ROI 热力图（亮度越高 = 响应越强）
+      try {
+        // 提取 ROI 区域的灰度数据生成简单热力图
+        const heatCanvas = document.createElement('canvas');
+        heatCanvas.width = Math.max(1, rrw2);
+        heatCanvas.height = Math.max(1, rrh2);
+        const hctx = heatCanvas.getContext('2d');
+        const hImg = hctx.createImageData(rrw2, rrh2);
+        // 计算每个像素的梯度幅值作为热力值
+        const w = grayData.w;
+        let hMax = 0;
+        const hVals = new Float32Array(rrw2 * rrh2);
+        for (let yy = 0; yy < rrh2; yy++) {
+          for (let xx = 0; xx < rrw2; xx++) {
+            const idx = (ry2 + yy) * w + (rx2 + xx);
+            const gx = grayData.gray[Math.min(idx + 1, grayData.gray.length - 1)] - grayData.gray[Math.max(idx - 1, 0)];
+            const gy = grayData.gray[Math.min(idx + w, grayData.gray.length - 1)] - grayData.gray[Math.max(idx - w, 0)];
+            const val = Math.sqrt(gx * gx + gy * gy);
+            hVals[yy * rrw2 + xx] = val;
+            if (val > hMax) hMax = val;
+          }
+        }
+        if (hMax > 0) {
+          for (let yy = 0; yy < rrh2; yy++) {
+            for (let xx = 0; xx < rrw2; xx++) {
+              const ratio = hVals[yy * rrw2 + xx] / hMax;
+              const di = (yy * rrw2 + xx) * 4;
+              // 热力图配色：蓝→青→黄→红
+              if (ratio < 0.25) {
+                hImg.data[di] = 0; hImg.data[di+1] = Math.round(ratio * 4 * 255); hImg.data[di+2] = 255;
+              } else if (ratio < 0.5) {
+                hImg.data[di] = 0; hImg.data[di+1] = 255; hImg.data[di+2] = Math.round(255 * (1 - (ratio - 0.25) * 4));
+              } else if (ratio < 0.75) {
+                hImg.data[di] = Math.round(255 * (ratio - 0.5) * 4); hImg.data[di+1] = 255; hImg.data[di+2] = 0;
+              } else {
+                hImg.data[di] = 255; hImg.data[di+1] = Math.round(255 * (1 - (ratio - 0.75) * 4)); hImg.data[di+2] = 0;
+              }
+              hImg.data[di+3] = 180;
+            }
+          }
+          hctx.putImageData(hImg, 0, 0);
+          ctx.globalAlpha = 0.35;
+          ctx.drawImage(heatCanvas, rx2, ry2, rrw2, rrh2);
+          ctx.globalAlpha = 1.0;
+        }
+      } catch(e) { /* ignore heatmap errors */ }
+      
+      // 画 ROI 边框
+      ctx.strokeStyle = '#ff0000'; ctx.fillStyle = 'rgba(255,0,0,0.15)'; ctx.lineWidth = 2;
+      ctx.strokeRect(rx2, ry2, rrw2, rrh2);
+      ctx.fillRect(rx2, ry2, rrw2, rrh2);
+      // 中心标记
+      const cx0 = rx2 + rrw2 / 2, cy0 = ry2 + rrh2 / 2;
+      ctx.beginPath(); ctx.arc(cx0, cy0, 6, 0, Math.PI * 2); ctx.fill();
+      // 参考 ROI
+      if (state.referenceROI) {
+        const [rrx, rry, rrw, rrh] = state.referenceROI;
+        ctx.strokeStyle = '#00ff00'; ctx.fillStyle = 'rgba(0,255,0,0.15)';
+        ctx.strokeRect(rrx, rry, rrw, rrh);
+        ctx.fillRect(rrx, rry, rrw, rrh);
+      }
+      ctx.restore();
+    }
+
+    log('正在检测动态ROI特征点...', 'info');
+    let ok = dynamicTracker.initialize(grayData.gray, grayData.w, grayData.h, true);
+    const d1 = dynamicTracker._diag || {};
+    log(`[${d1.method}] 动态: ${dynamicTracker.validPoints} 点 | max=${(d1.maxVal||0).toFixed(2)} thr=${(d1.threshold||0).toFixed(2)} 候选=${d1.candidates||0} | ROI: mean=${(d1.roiMean||0).toFixed(1)} std=${(d1.roiStd||0).toFixed(1)} nonZero=${d1.nonZeroResponses||0}`, 'info');
+    
+    // 如果标准检测没找到点，用降级参数重试
+    if (!ok || dynamicTracker.validPoints === 0) {
+      log('标准检测无结果，使用宽松参数重试 (qualityLevel=0.001, minDist=3)...', 'warn');
+      ok = dynamicTracker.initializeLenient(grayData.gray, grayData.w, grayData.h, true);
+      const d1b = dynamicTracker._diag || {};
+      log(`[${d1b.method}] 宽松检测: ${dynamicTracker.validPoints} 点 | max=${(d1b.maxVal||0).toFixed(2)} thr=${(d1b.threshold||0).toFixed(2)} 候选=${d1b.candidates||0}`, 'info');
+    }
+    log(`动态特征点: ${dynamicTracker.validPoints} 个`, 'info');
+
+    if (state.referenceROI) {
+      log('正在检测参考ROI特征点...', 'info');
+      referenceTracker.prevGray = null; referenceTracker.prevPoints = null;
+      let ok2 = referenceTracker.initialize(grayData.gray, grayData.w, grayData.h, true);
+      const d2 = referenceTracker._diag || {};
+      log(`[${d2.method}] 参考: ${referenceTracker.validPoints} 点 | max=${(d2.maxVal||0).toFixed(2)} thr=${(d2.threshold||0).toFixed(2)} 候选=${d2.candidates||0} | ROI: mean=${(d2.roiMean||0).toFixed(1)} std=${(d2.roiStd||0).toFixed(1)}`, 'info');
+      if (!ok2 || referenceTracker.validPoints === 0) {
+        log('参考检测无结果，使用宽松参数重试...', 'warn');
+        referenceTracker.initializeLenient(grayData.gray, grayData.w, grayData.h, true);
+        log(`宽松参考检测: ${referenceTracker.validPoints} 点`, 'info');
+      }
+      log(`参考特征点: ${referenceTracker.validPoints} 个`, 'info');
+    }
+
+    if (!ok) {
+      log('❌ 动态 ROI 内未检测到特征点（' + dynamicTracker.validPoints + ' 个），请调整 ROI 选择更有纹理的区域', 'err');
+      return;
+    }
+    if (dynamicTracker.validPoints < 5) {
+      log('⚠ 特征点太少 (' + dynamicTracker.validPoints + ')，追踪可能不稳定，建议调整 ROI', 'warn');
+    }
+
+    state.tracking = true; state.history = []; state.csvRows = [];
+    state.startTime = performance.now(); state.frameCount = 0;
+    $('btnStartTracking').textContent = '⏸ 停止追踪';
+    $('btnStartTracking').classList.remove('primary'); $('btnStartTracking').classList.add('danger');
+    updateStatus('track', 'ok', '追踪：运行中');
+    log(`✅ 追踪已启动，动态 ${dynamicTracker.validPoints} 点${state.referenceROI ? `，参考 ${referenceTracker.validPoints} 点` : ''}`, 'ok');
+  } catch (err) {
+    log('❌ startTracking 异常: ' + err.message, 'err');
+    console.error('startTracking error:', err);
+  }
+}
+
+function stopTracking() {
+  state.tracking = false;
+  $('btnStartTracking').textContent = '▶ 开始追踪';
+  $('btnStartTracking').classList.add('primary'); $('btnStartTracking').classList.remove('danger');
+  updateStatus('track', 'warn', '追踪：已停止');
+  log('追踪已停止');
+}
+
+function resetTracking() {
+  try {
+    dynamicTracker.offset = [0, 0]; referenceTracker.offset = [0, 0];
+    if (estimator) estimator.reset();
+    state.history = []; state.csvRows = [];
+    state.startTime = performance.now();
+    if (state.tracking) {
+      const grayData = getCurrentGray();
+      dynamicTracker.reset(grayData.gray, grayData.w, grayData.h);
+      if (state.referenceROI) referenceTracker.reset(grayData.gray, grayData.w, grayData.h);
+    }
+    log('追踪已重置');
+  } catch (err) {
+    log('❌ resetTracking 异常: ' + err.message, 'err');
+  }
+}
+
+// === Main Loop ===
+function processFrame() {
+  if (!state.video) { state.frameId = requestAnimationFrame(processFrame); return; }
+  const v = state.video;
+  const vw = v.videoWidth, vh = v.videoHeight;
+
+  // 容错：视频尺寸还没准备好，继续等待
+  if (vw === 0 || vh === 0) {
+    state.frameId = requestAnimationFrame(processFrame);
+    return;
+  }
+
+  const { cw, ch } = getContainerRect();
+  const dpr = window.devicePixelRatio || 1;
+  const dprLimit = Math.min(dpr, 2);
+  const needOverlayW = Math.max(1, Math.floor(cw * dprLimit));
+  const needOverlayH = Math.max(1, Math.floor(ch * dprLimit));
+
+  // 容错：canvas 还没初始化 / 视频尺寸变了 / 容器尺寸变了 → 自动(重)初始化
+  const videoMismatch = !state.ctx || !state.canvas.width || state.canvas.width !== vw || state.canvas.height !== vh;
+  const overlayMismatch = (state.overlay.width !== needOverlayW) || (state.overlay.height !== needOverlayH);
+  if (videoMismatch || overlayMismatch) {
+    initCanvases(vw, vh);
+    if (!state.ctx) {
+      state.frameId = requestAnimationFrame(processFrame);
+      return;
+    }
+  }
+
+  const flip = $('chkFlip').checked;
+  if (flip) {
+    state.ctx.save(); state.ctx.scale(-1, 1);
+    state.ctx.drawImage(v, -vw, 0, vw, vh);
+    state.ctx.restore();
+  } else {
+    state.ctx.drawImage(v, 0, 0, vw, vh);
+  }
+
+  // 在视频帧上绘制 ROI 标记（可视化验证坐标映射）
+  if (state.dynamicROI) {
+    const c = state.ctx;
+    c.save();
+    c.strokeStyle = '#ff0000'; c.fillStyle = 'rgba(255,0,0,0.6)'; c.lineWidth = 2;
+    const [rx, ry, rw, rh] = state.dynamicROI;
+    c.strokeRect(rx, ry, rw, rh);
+    c.fillRect(rx + rw/2 - 3, ry + rh/2 - 3, 6, 6);
+    if (state.referenceROI) {
+      c.strokeStyle = '#00ff00'; c.fillStyle = 'rgba(0,255,0,0.6)';
+      const [rrx, rry, rrw, rrh] = state.referenceROI;
+      c.strokeRect(rrx, rry, rrw, rrh);
+      c.fillRect(rrx + rrw/2 - 3, rry + rrh/2 - 3, 6, 6);
+    }
+    c.restore();
+  }
+
+  if (state.tracking) {
+    const grayData = getCurrentGray();
+    const w = grayData.w, h = grayData.h;
+    const dynRes = dynamicTracker.update(grayData.gray, w, h);
+    let refOffset = null;
+    if (state.referenceROI && referenceTracker.prevPoints && referenceTracker.prevPoints.length > 0) {
+      const refRes = referenceTracker.update(grayData.gray, w, h);
+      refOffset = refRes.offset;
+    }
+    const relOffset = refOffset ? [dynRes.offset[0] - refOffset[0], dynRes.offset[1] - refOffset[1]] : dynRes.offset;
+    const { raw, filtered } = estimator.update(relOffset);
+    state.rawDisp = raw; state.filteredDisp = filtered;
+    state.history.push(filtered);
+    if (state.history.length > 300) state.history.shift();
+    state.frameCount++;
+    const elapsed = (performance.now() - state.startTime) / 1000;
+    state.csvRows.push([elapsed.toFixed(4), state.frameCount, raw.toFixed(6), filtered.toFixed(6),
+      dynRes.delta[0].toFixed(6), dynRes.delta[1].toFixed(6),
+      refOffset ? refOffset[0].toFixed(6) : '0.0', refOffset ? refOffset[1].toFixed(6) : '0.0',
+      relOffset[0].toFixed(6), relOffset[1].toFixed(6),
+      state.mmPerPx.toFixed(9), dynRes.confidence.toFixed(4), dynRes.valid, referenceTracker.validPoints, dynRes.reinit ? 1 : 0]);
+    if (state.csvRows.length > 2000) state.csvRows = state.csvRows.slice(-1000);
+    updateMetrics(dynRes, filtered, raw);
+  }
+  drawOverlay(); drawChart();
+  const now = performance.now();
+  if (state.lastTime > 0) {
+    state.fps = state.fps * 0.9 + (1000 / (now - state.lastTime)) * 0.1;
+    $('fpsCounter').textContent = state.fps.toFixed(1) + ' FPS';
+  }
+  state.lastTime = now;
+  state.frameId = requestAnimationFrame(processFrame);
+}
+
+function drawROI(ctx, roi, color, label) {
+  const [vx, vy, vrw, vrh] = roi;
+  const p0 = vpxToCx(vx, vy);
+  const p1 = vpxToCx(vx + vrw, vy + vrh);
+  const x = p0.x, y = p0.y, rw = p1.x - p0.x, rh = p1.y - p0.y;
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, rw, rh);
+  const cs = 8; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, y+cs); ctx.lineTo(x, y); ctx.lineTo(x+cs, y);
+  ctx.moveTo(x+rw-cs, y); ctx.lineTo(x+rw, y); ctx.lineTo(x+rw, y+cs);
+  ctx.moveTo(x+rw, y+rh-cs); ctx.lineTo(x+rw, y+rh); ctx.lineTo(x+rw-cs, y+rh);
+  ctx.moveTo(x+cs, y+rh); ctx.lineTo(x, y+rh); ctx.lineTo(x, y+rh-cs);
+  ctx.stroke();
+  ctx.font = 'bold 13px Consolas, monospace';
+  ctx.fillStyle = color;
+  ctx.fillText(`${label} ${vrw}×${vrh}`, x, Math.max(16, y - 6));
+}
+
+function drawOverlay() {
+  const { cw, ch } = getContainerRect();
+  const ctx = state.overlayCtx;
+  // 用 CSS 尺寸清除（因为 setTransform 已处理 DPR）
+  ctx.clearRect(0, 0, cw, ch);
+  // ROI 框
+  if (state.dynamicROI) drawROI(ctx, state.dynamicROI, '#00ddff', 'DYNAMIC');
+  if (state.referenceROI) drawROI(ctx, state.referenceROI, '#22c55e', 'REFERENCE');
+  // 特征点
+  const drawPoints = (tracker, color) => {
+    if (!tracker.prevPoints) return;
+    ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 1;
+    for (const p of tracker.prevPoints) {
+      const dp = vpxToCx(p.x, p.y);
+      ctx.beginPath(); ctx.arc(dp.x, dp.y, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+  };
+  drawPoints(dynamicTracker, '#00dcff');
+  if (state.referenceROI && referenceTracker.prevPoints) drawPoints(referenceTracker, '#4ade80');
+
+  const lines = [
+    `disp filtered: ${state.filteredDisp >= 0 ? '+' : ''}${state.filteredDisp.toFixed(3)} mm`,
+    `disp raw:      ${state.rawDisp >= 0 ? '+' : ''}${state.rawDisp.toFixed(3)} mm`,
+    `scale: ${state.mmPerPx.toFixed(6)} mm/px`,
+    `confidence: ${dynamicTracker.confidence.toFixed(2)}`,
+    `track points: ${dynamicTracker.validPoints}${state.referenceROI ? ` / ref: ${referenceTracker.validPoints}` : ''}`,
+  ];
+  const x0 = 16, y0 = 24, lineH = 22;
+  const panelW = 260, panelH = lines.length * lineH + 16;
+  ctx.fillStyle = 'rgba(10, 16, 32, 0.75)';
+  ctx.strokeStyle = 'rgba(30, 58, 106, 0.8)';
+  roundRect(ctx, x0 - 8, y0 - 16, panelW, panelH, 6);
+  ctx.fill(); ctx.stroke();
+  ctx.font = '12px Consolas, monospace';
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillStyle = i === 0 ? '#00dcff' : (i === 1 ? '#eab308' : '#e0e6f0');
+    ctx.font = i === 0 ? 'bold 13px Consolas, monospace' : '12px Consolas, monospace';
+    ctx.fillText(lines[i], x0, y0 + i * lineH);
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawChart() {
+  const canvas = state.chartCanvas, ctx = state.chartCtx;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+  ctx.clearRect(0, 0, w, h);
+  const data = state.history;
+  if (data.length < 2) {
+    ctx.fillStyle = '#5a7ab5'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('等待追踪数据...', w / 2, h / 2); ctx.textAlign = 'start'; return;
+  }
+  const padL = 48, padR = 16, padT = 10, padB = 24;
+  const cw = w - padL - padR, ch = h - padT - padB;
+  const absMax = Math.max(0.2, ...data.map(Math.abs));
+  const yMin = -absMax * 1.2, yMax = absMax * 1.2;
+  ctx.strokeStyle = '#1e2a4a'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const y = padT + (ch * i / 4); ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w-padR, y); ctx.stroke(); }
+  const zeroY = padT + ch * (yMax / (yMax - yMin));
+  if (zeroY > padT && zeroY < padT + ch) {
+    ctx.strokeStyle = '#3b4a6a'; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(padL, zeroY); ctx.lineTo(w-padR, zeroY); ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.fillStyle = '#6b83a8'; ctx.font = '10px Consolas, monospace'; ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (ch * i / 4);
+    const val = yMax - (yMax - yMin) * i / 4;
+    ctx.fillText(val.toFixed(2), padL - 6, y + 3);
+  }
+  ctx.textAlign = 'start';
+  const n = data.length, xStep = cw / Math.max(1, n - 1);
+  ctx.beginPath(); ctx.moveTo(padL, padT + ch);
+  for (let i = 0; i < n; i++) {
+    const x = padL + i * xStep, y = padT + ch * (1 - (data[i] - yMin) / (yMax - yMin));
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(padL + (n - 1) * xStep, padT + ch); ctx.closePath();
+  ctx.fillStyle = 'rgba(0, 220, 255, 0.08)'; ctx.fill();
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const x = padL + i * xStep, y = padT + ch * (1 - (data[i] - yMin) / (yMax - yMin));
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#00dcff'; ctx.lineWidth = 1.8; ctx.stroke();
+  const lastX = padL + (n - 1) * xStep, lastY = padT + ch * (1 - (data[n-1] - yMin) / (yMax - yMin));
+  ctx.fillStyle = '#00dcff'; ctx.beginPath(); ctx.arc(lastX, lastY, 3, 0, Math.PI * 2); ctx.fill();
+  $('chartInfo').textContent = `样本: ${n} · 范围: ${yMin.toFixed(2)}~${yMax.toFixed(2)}mm`;
+}
+
+function updateMetrics(trackerRes, filtered, raw) {
+  $('dispValue').innerHTML = `${filtered >= 0 ? '+' : ''}${filtered.toFixed(3)}<span class="unit">mm</span>`;
+  $('rawValue').innerHTML = `${raw >= 0 ? '+' : ''}${raw.toFixed(3)}<span class="unit">mm</span>`;
+  $('confValue').textContent = trackerRes.confidence.toFixed(2);
+  $('pointCount').textContent = trackerRes.valid;
+  updateStatus('conf', trackerRes.confidence >= 0.55 ? 'ok' : (trackerRes.confidence >= 0.25 ? 'warn' : 'err'), `置信度：${trackerRes.confidence.toFixed(2)}`);
+}
+
+function updateStatus(kind, level, text) {
+  const dot = $('status' + kind.charAt(0).toUpperCase() + kind.slice(1));
+  const label = $('status' + kind.charAt(0).toUpperCase() + kind.slice(1) + 'Text');
+  dot.className = 'status-dot ' + level; label.textContent = text;
+}
+
+// === ROI Selection ===
+let roiSelecting = null, roiStep = 0, tempROI = null, startX = 0, startY = 0, drawing = false;
+
+function beginROISelection(mode) {
+  roiSelecting = mode; roiStep = mode === 'both' ? 0 : 1; tempROI = null;
+  state.selectionCanvas.style.display = 'block';
+  updateROITip();
+  log(`开始选择 ${mode === 'both' ? '两个ROI' : (mode === 'dynamic' ? '动态ROI' : '参考ROI')}`, 'info');
+}
+
+function updateROITip() {
+  const tip = $('roiTip');
+  tip.style.display = 'block';
+  if (roiSelecting === 'both' && roiStep === 0) {
+    tip.innerHTML = '<div class="step">第一步</div>在画面上拖动选择 <span style="color:#00ddff">动态 ROI</span>';
+  } else if (roiSelecting === 'both' && roiStep === 1) {
+    tip.innerHTML = '<div class="step">第二步</div>在画面上拖动选择 <span style="color:#22c55e">参考 ROI</span>';
+  } else if (roiSelecting === 'dynamic') {
+    tip.innerHTML = '<div class="step">选择动态 ROI</div>在画面上拖动矩形选择';
+  } else {
+    tip.innerHTML = '<div class="step">选择参考 ROI</div>在画面上拖动矩形选择';
+  }
+}
+
+function cancelROISelection() {
+  roiSelecting = null; tempROI = null;
+  state.selectionCanvas.style.display = 'none';
+  $('roiTip').style.display = 'none';
+  log('ROI 选择已取消', 'warn');
+}
+
+function confirmROI(roi) {
+  if (roiSelecting === 'dynamic') {
+    state.dynamicROI = roi;
+    $('roiDynamicText').textContent = `${roi[2]}×${roi[3]} @(${roi[0]},${roi[1]})`;
+    log(`动态 ROI 已设置: ${roi[2]}×${roi[3]}`, 'ok');
+    roiSelecting = null; state.selectionCanvas.style.display = 'none'; $('roiTip').style.display = 'none';
+  } else if (roiSelecting === 'reference') {
+    state.referenceROI = roi;
+    $('roiReferenceText').textContent = `${roi[2]}×${roi[3]} @(${roi[0]},${roi[1]})`;
+    log(`参考 ROI 已设置: ${roi[2]}×${roi[3]}`, 'ok');
+    roiSelecting = null; state.selectionCanvas.style.display = 'none'; $('roiTip').style.display = 'none';
+  } else if (roiSelecting === 'both') {
+    if (roiStep === 0) {
+      state.dynamicROI = roi;
+      $('roiDynamicText').textContent = `${roi[2]}×${roi[3]} @(${roi[0]},${roi[1]})`;
+      log(`动态 ROI 已设置: ${roi[2]}×${roi[3]}`, 'ok');
+      roiStep = 1; tempROI = null; updateROITip();
+    } else {
+      state.referenceROI = roi;
+      $('roiReferenceText').textContent = `${roi[2]}×${roi[3]} @(${roi[0]},${roi[1]})`;
+      log(`参考 ROI 已设置: ${roi[2]}×${roi[3]}`, 'ok');
+      roiSelecting = null; state.selectionCanvas.style.display = 'none'; $('roiTip').style.display = 'none';
+    }
+  }
+  updateROIButtons();
+}
+
+function updateROIButtons() {
+  const hasDynamic = !!state.dynamicROI;
+  const mmOk = !!(state.mmPerPx && state.mmPerPx > 0);
+  const canStart = hasDynamic && mmOk;
+  $('btnStartTracking').disabled = !canStart;
+  $('btnReset').disabled = !state.tracking;
+  log(`按钮状态: 动态ROI=${hasDynamic}, mmPerPx=${state.mmPerPx}(ok=${mmOk}), 开始追踪=${canStart}`, 'info');
+}
+
+const selCanvas = state.selectionCanvas;
+
+selCanvas.addEventListener('mousedown', e => {
+  if (!roiSelecting) return;
+  const rect = selCanvas.getBoundingClientRect();
+  startX = e.clientX - rect.left;   // 容器 CSS 像素坐标
+  startY = e.clientY - rect.top;
+  drawing = true; tempROI = null;
+});
+
+selCanvas.addEventListener('mousemove', e => {
+  if (!drawing) return;
+  const rect = selCanvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  const x = Math.min(startX, cx), y = Math.min(startY, cy);
+  const w = Math.abs(cx - startX), h = Math.abs(cy - startY);
+  tempROI = [x, y, w, h, true];
+  const ctx = selCanvas.getContext('2d');
+  const { cw, ch } = getContainerRect();
+  ctx.clearRect(0, 0, cw, ch);
+  const color = (roiSelecting === 'both' && roiStep === 0) || roiSelecting === 'dynamic' ? '#00ddff' : '#22c55e';
+  ctx.strokeStyle = color; ctx.fillStyle = color + '33'; ctx.lineWidth = 2;
+  ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+});
+
+selCanvas.addEventListener('mouseup', () => {
+  if (!drawing) return; drawing = false;
+  const ctx = selCanvas.getContext('2d');
+  const { cw, ch } = getContainerRect();
+  if (tempROI && tempROI[2] > 5 && tempROI[3] > 5) {
+    const isClient = tempROI[4] === true;
+    let roi;
+    if (isClient) {
+      const p0 = cxToVpx(tempROI[0], tempROI[1]);
+      const p1 = cxToVpx(tempROI[0] + tempROI[2], tempROI[1] + tempROI[3]);
+      const rx = Math.min(p0.x, p1.x), ry = Math.min(p0.y, p1.y);
+      const rw = Math.max(2, Math.abs(p1.x - p0.x)), rh = Math.max(2, Math.abs(p1.y - p0.y));
+      roi = [Math.round(rx), Math.round(ry), Math.round(rw), Math.round(rh)];
+    } else {
+      roi = tempROI.slice(0, 4);
+    }
+    confirmROI(roi);
+    ctx.clearRect(0, 0, cw, ch);
+  } else {
+    log('ROI 太小，请重新选择', 'warn');
+    tempROI = null;
+    ctx.clearRect(0, 0, cw, ch);
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && roiSelecting) cancelROISelection();
+  else if (e.key === 'Enter' && roiSelecting && tempROI && tempROI[2] > 5 && tempROI[3] > 5) {
+    const ctx = selCanvas.getContext('2d');
+    const isClient = tempROI[4] === true;
+    let roi;
+    if (isClient) {
+      const p0 = cxToVpx(tempROI[0], tempROI[1]);
+      const p1 = cxToVpx(tempROI[0] + tempROI[2], tempROI[1] + tempROI[3]);
+      const rx = Math.min(p0.x, p1.x), ry = Math.min(p0.y, p1.y);
+      const rw = Math.max(2, Math.abs(p1.x - p0.x)), rh = Math.max(2, Math.abs(p1.y - p0.y));
+      roi = [Math.round(rx), Math.round(ry), Math.round(rw), Math.round(rh)];
+    } else {
+      roi = tempROI.slice(0, 4);
+    }
+    confirmROI(roi);
+    const { cw, ch } = getContainerRect();
+    ctx.clearRect(0, 0, cw, ch);
+  }
+  else if (e.key === ' ') {
+    e.preventDefault();
+    if (state.video) { if (state.tracking) stopTracking(); else startTracking(); }
+  } else if (e.key === 'r' || e.key === 'R') { if (state.video) resetTracking(); }
+  else if (e.key === 'c' || e.key === 'C') { if (state.video && !roiSelecting) beginROISelection('both'); }
+  else if (e.key === 's' || e.key === 'S') { if (state.video) takeScreenshot(); }
+});
+
+// === Camera ===
+const CAMERA_ERRORS = {
+  NotAllowedError: '❌ 用户拒绝了摄像头权限。请点击浏览器地址栏左侧的锁图标，允许本站使用摄像头。',
+  SecurityError: '❌ 不安全的上下文！getUserMedia 需要 HTTPS 或 localhost 环境。',
+  NotFoundError: '❌ 未检测到摄像头设备。请确认电脑已连接摄像头。',
+  NotReadableError: '❌ 摄像头被其他程序占用。请关闭占用摄像头的程序后重试。',
+  OverconstrainedError: '❌ 摄像头不支持请求的分辨率。请尝试选择较低分辨率。'
+};
+
+async function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('您的浏览器不支持摄像头 API，请使用 Chrome 80+ 或 Edge 80+'); return;
+  }
+  if (!window.isSecureContext) {
+    alert('当前页面不在安全上下文中！\n\n摄像头访问需要 HTTPS 或 localhost。\n\n请使用：\n1. 本页面的 HTTPS 版本\n2. 或在本机 http://localhost:8180 访问');
+    return;
+  }
+  try {
+    const resSel = $('resolution').value;
+    const [w, h] = resSel.split('x').map(Number);
+    const facingMode = state.currentFacingMode;
+    log(`正在请求摄像头权限... (${facingMode === 'environment' ? '后置' : '前置'}摄像头)`, 'info');
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: w },
+          height: { ideal: h },
+          frameRate: { ideal: 30 },
+          facingMode: { ideal: facingMode }
+        }
+      });
+    } catch {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode } }
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
+    }
+    state.video = document.createElement('video');
+    state.video.srcObject = stream;
+    state.video.autoplay = true;
+    state.video.playsInline = true;
+    state.video.muted = true;
+    state.video.setAttribute('webkit-playsinline', 'true');
+    state.video.setAttribute('x5-playsinline', 'true');
+    state.videoTrack = stream.getVideoTracks()[0];
+    const settings = state.videoTrack.getSettings();
+    log(`✅ 摄像头已启动: ${settings.width}×${settings.height} (${facingMode === 'environment' ? '后置' : '前置'})`, 'ok');
+
+    // 显式调用 play() - 兼容现代浏览器自动播放策略
+    try {
+      await state.video.play();
+    } catch (e) {
+      log(`video.play() 警告: ${e.message}，将继续尝试...`, 'warn');
+    }
+
+    // 多重就绪检测机制 - 防止单一事件不触发导致黑屏
+    let initialized = false;
+    const tryInit = () => {
+      if (initialized || !state.video) return;
+      const vw = state.video.videoWidth || state.videoWidth || 0;
+      const vh = state.video.videoHeight || state.videoHeight || 0;
+      if (vw > 0 && vh > 0) {
+        initialized = true;
+        initCanvases(vw, vh);
+        log(`视频帧尺寸: ${vw}×${vh}`, 'info');
+        if (!state.frameId) {
+          state.frameId = requestAnimationFrame(processFrame);
+        }
+      }
+    };
+
+    // 绑定多个事件，确保至少有一个能触发初始化
+    state.video.addEventListener('loadedmetadata', () => { log('事件: loadedmetadata', 'info'); tryInit(); });
+    state.video.addEventListener('loadeddata', () => { log('事件: loadeddata', 'info'); tryInit(); });
+    state.video.addEventListener('canplay', () => { log('事件: canplay', 'info'); tryInit(); });
+    state.video.addEventListener('playing', () => { log('事件: playing', 'info'); tryInit(); });
+
+    // 如果 videoWidth 已经可用（某些浏览器事件已触发），立即初始化
+    if (state.video.readyState >= 1) {
+      log(`readyState=${state.video.readyState}，尝试立即初始化`, 'info');
+      tryInit();
+    }
+
+    // 超时回退机制 - 2秒后无论事件是否触发都尝试初始化
+    const fallbackTimer = setInterval(() => {
+      tryInit();
+      if (initialized || !state.video) {
+        clearInterval(fallbackTimer);
+      }
+    }, 200);
+    setTimeout(() => clearInterval(fallbackTimer), 5000);
+
+    $('btnStart').disabled = true; $('btnStop').disabled = false;
+    updateStatus('camera', 'ok', '摄像头：运行中');
+  } catch (err) {
+    const msg = CAMERA_ERRORS[err.name] || `摄像头启动失败: ${err.message}`;
+    log(msg, 'err'); updateStatus('camera', 'err', '摄像头：不可用');
+    alert(msg);
+  }
+}
+
+function switchCamera() {
+  if (!state.isMobile) {
+    alert('仅移动设备支持切换前后摄像头');
+    return;
+  }
+  state.currentFacingMode = state.currentFacingMode === 'environment' ? 'user' : 'environment';
+  log(`切换到${state.currentFacingMode === 'environment' ? '后置' : '前置'}摄像头...`, 'info');
+  stopCamera();
+  startCamera();
+}
+
+function stopCamera() {
+  if (state.videoTrack) { state.videoTrack.stop(); state.videoTrack = null; }
+  if (state.frameId) { cancelAnimationFrame(state.frameId); state.frameId = null; }
+  if (state.video) { state.video.srcObject = null; state.video = null; }
+  state.ctx = null; state.overlayCtx = null;
+  state.overlay.width = 0; state.overlay.height = 0;
+  stopTracking();
+  $('btnStart').disabled = false; $('btnStop').disabled = true;
+  updateStatus('camera', 'idle', '摄像头：已停止');
+}
+
+function takeScreenshot() {
+  if (!state.canvas || !state.video) { alert('请先启动摄像头'); return; }
+  const canvas = document.createElement('canvas');
+  canvas.width = state.canvas.width; canvas.height = state.canvas.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(state.canvas, 0, 0);
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `screenshot_${Date.now()}.png`;
+    a.click(); URL.revokeObjectURL(url);
+    log('📷 截图已保存', 'ok');
+  });
+}
+
+function exportCSV() {
+  if (state.csvRows.length === 0) { alert('暂无数据可导出'); return; }
+  const header = 'timestamp,disp_raw(mm),disp_filtered(mm),confidence,valid_points,fps\n';
+  const rows = state.csvRows.map(r => `${r.ts},${r.raw},${r.filtered},${r.conf},${r.valid},${r.fps}`).join('\n');
+  const csv = header + rows;
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `displacement_${Date.now()}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  log(`⬇ CSV 已导出: ${state.csvRows.length} 行`, 'ok');
+}
+
+// === 事件绑定 ===
+document.addEventListener('DOMContentLoaded', () => {
+  const isMobileDevice = state.isMobile;
+  if (isMobileDevice) {
+    document.body.classList.add('is-mobile');
+    log('📱 检测到移动设备，默认使用后置摄像头', 'info');
+  }
+
+  $('btnStart').addEventListener('click', startCamera);
+  $('btnStop').addEventListener('click', stopCamera);
+  $('btnSwitchCamera').addEventListener('click', switchCamera);
+  $('btnStartTracking').addEventListener('click', () => {
+    log('🔘 开始追踪按钮被点击 (state.tracking=' + state.tracking + ')', 'info');
+    if (state.tracking) stopTracking(); else startTracking();
+  });
+  $('btnReset').addEventListener('click', resetTracking);
+  $('btnExportCSV').addEventListener('click', exportCSV);
+  $('btnScreenshot').addEventListener('click', takeScreenshot);
+  $('btnSelectDynamic').addEventListener('click', () => beginROISelection('dynamic'));
+  $('btnSelectReference').addEventListener('click', () => beginROISelection('reference'));
+  $('btnSelectAll').addEventListener('click', () => beginROISelection('both'));
+
+  $('chkFlip').addEventListener('change', e => {
+    state.flipHorizontal = e.target.checked;
+    log(e.target.checked ? '已启用水平翻转' : '已禁用水平翻转', 'info');
+  });
+
+  $('resolution').addEventListener('change', () => {
+    if (state.video) {
+      log('分辨率将在重启摄像头后生效', 'warn');
+    }
+  });
+
+  // 窗口尺寸变化时，重新初始化 overlay/selectionCanvas 铺满容器
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (state.canvas && state.canvas.width > 0) {
+        // 保持 videoCanvas 内部分辨率不变，只重置 overlay/selectionCanvas
+        const w = state.canvas.width, h = state.canvas.height;
+        state.canvas.getContext('2d', { willReadFrequently: true });  // ensure ctx still exists
+        initCanvases(w, h);
+        log('窗口大小已调整，画布已更新', 'info');
+      }
+    }, 150);
+  });
+
+  log('系统已就绪，请启动摄像头开始监测', 'info');
+});
+</script>
+</body>
+</html>
